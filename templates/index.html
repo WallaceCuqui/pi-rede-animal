@@ -1,0 +1,258 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PI Animal - Mural de Achados e Perdidos</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    
+    <!-- CSS do Leaflet (Mapa OpenStreetMap) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        'brand-topbar': '#8DAA71',
+                        'brand-nav': '#FDF6E3',
+                        'brand-hero': '#B5CBA9',
+                        'brand-bg': '#F9F7F1',
+                        'brand-orange': '#FF7A00',
+                        'brand-orange-hover': '#E66E00',
+                        'status-lost': '#FF6600',
+                        'status-found': '#008B8B',
+                    },
+                    backgroundImage: {
+                        'paw-pattern': "url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgb3BhY2l0eT0iMC4wNSI+PHBhdGggZD0iTTEwLjUgMTVjMi44IDAgNS0yLjIgNS01czIyLjItNS01LTVyLTIuMi01LTUgMi4yLTUgNS01IDV6IiBmaWxsPSIjMDAwIi8+PC9zdmc+')"
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="antialiased min-h-screen flex flex-col font-sans bg-brand-bg">
+
+    <!-- Top Bar com Barra de Acessibilidade -->
+    <div class="bg-brand-topbar text-white text-xs sm:text-sm py-2 px-4 flex flex-col sm:flex-row justify-between items-center gap-2">
+        <div><strong>PI ANIMAL:</strong> Mural de Animais Perdidos e Encontrados</div>
+
+        <!-- Controles de Acessibilidade / Lupa -->
+        <div class="flex items-center gap-1.5 bg-black bg-opacity-20 px-3 py-1 rounded-full text-xs">
+            <span class="font-semibold flex items-center gap-1 mr-1">
+                <i class="fas fa-universal-access"></i> Acessibilidade:
+            </span>
+            
+            <!-- Lupa Aumentar (Zoom In) -->
+            <button type="button" onclick="changeZoom(1)" title="Aumentar Texto (Lupa +)" class="hover:bg-white hover:text-gray-800 transition font-bold px-2 py-0.5 rounded bg-white bg-opacity-20 flex items-center gap-1">
+                <i class="fas fa-search-plus"></i> A+
+            </button>
+
+            <!-- Lupa Diminuir (Zoom Out) -->
+            <button type="button" onclick="changeZoom(-1)" title="Diminuir Texto (Lupa -)" class="hover:bg-white hover:text-gray-800 transition font-bold px-2 py-0.5 rounded bg-white bg-opacity-20 flex items-center gap-1">
+                <i class="fas fa-search-minus"></i> A-
+            </button>
+
+            <!-- Reset 100% -->
+            <button type="button" onclick="resetZoom()" title="Tamanho Normal" class="hover:bg-white hover:text-gray-800 transition px-2 py-0.5 rounded bg-white bg-opacity-20 text-[11px]">
+                100%
+            </button>
+
+            <!-- Alto Contraste (Bônus de Acessibilidade) -->
+            <button type="button" onclick="toggleContrast()" title="Alternar Alto Contraste" class="hover:bg-white hover:text-gray-800 transition px-2 py-0.5 rounded bg-white bg-opacity-20 ml-1">
+                <i class="fas fa-adjust"></i>
+            </button>
+        </div>
+    </div>
+    
+    {% if messages %}
+        <div class="container mx-auto px-4 mt-4 space-y-2" role="status">
+            {% for message in messages %}
+                <p class="rounded-lg px-4 py-3 {% if message.tags == 'success' %}bg-green-100 text-green-800{% else %}bg-red-100 text-red-800{% endif %}">
+                    {{ message }}
+                </p>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <!-- Main Navigation -->
+    <nav class="bg-brand-nav py-4 px-6 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4 relative z-10">
+        <div class="flex items-center gap-3">
+            <div class="text-4xl text-[#A67B5B]"><i class="fas fa-paw"></i></div>
+            <div class="flex flex-col">
+                <h1 class="text-3xl font-extrabold tracking-tight text-[#4A7C59] leading-tight" style="text-shadow: 1px 1px 0px rgba(0,0,0,0.1);">PI ANIMAL</h1>
+                <span class="text-xs font-medium text-gray-600">Juntos, trazemos eles de volta para casa</span>
+            </div>
+        </div>
+
+        <!-- Filtros do Mural -->
+        <ul class="flex flex-wrap justify-center gap-2 sm:gap-3 text-sm font-semibold text-gray-800">
+            <li id="btn-filter-todos" onclick="filterPosts('todos')" class="px-4 py-1.5 rounded-full cursor-pointer transition bg-brand-orange text-white shadow-sm">Todos</li>
+            <li id="btn-filter-visto" onclick="filterPosts('visto')" class="px-4 py-1.5 rounded-full cursor-pointer transition bg-white hover:bg-teal-50 text-status-found border border-gray-200">Encontrados</li>
+            <li id="btn-filter-perdido" onclick="filterPosts('perdido')" class="px-4 py-1.5 rounded-full cursor-pointer transition bg-white hover:bg-orange-50 text-status-lost border border-gray-200">Perdidos</li>
+            <li onclick="openModal()" class="px-4 py-1.5 rounded-full cursor-pointer transition bg-brand-hero hover:bg-opacity-90 text-gray-800 shadow-sm ml-2">Cadastrar Cartaz</li>
+        </ul>
+    </nav>
+
+    <!-- Hero / Banner Section -->
+    <div class="bg-brand-hero py-8 px-4 text-center shadow-inner relative z-0">
+        <h2 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-6 drop-shadow-sm">MURAL DE ANIMAIS ENCONTRADOS & PERDIDOS</h2>
+
+        <div class="max-w-4xl mx-auto flex flex-col sm:flex-row gap-4 justify-center items-center">
+            <button onclick="openModal()" class="bg-brand-orange hover:bg-brand-orange-hover text-white font-bold py-3 px-8 rounded-full shadow-md transition duration-200 transform hover:scale-105 whitespace-nowrap">
+                CADASTRAR CARTAZ (Grátis)
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Content Grid -->
+    <main class="flex-grow container mx-auto px-4 py-8 max-w-7xl relative">
+        <div class="absolute inset-0 bg-paw-pattern opacity-10 pointer-events-none"></div>
+
+        <div class="flex flex-col md:flex-row justify-between items-end mb-6 border-b border-gray-200 pb-2 relative z-10">
+            <h3 class="text-2xl font-bold text-gray-800">
+                <span class="text-brand-orange">PERDIDOS</span> E <span class="text-status-found">ENCONTRADOS</span> RECENTES
+            </h3>
+        </div>
+
+        <div id="mural-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 relative z-10">
+            {% for ad in ads %}
+                <div class="post-card bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden border border-gray-100 flex flex-col h-full group" data-status="{{ ad.status }}">
+                    <div class="relative h-48 sm:h-56 overflow-hidden bg-gray-200">
+                        <img src="{{ ad.imageUrl }}" alt="{{ ad.animalName|default:'Animal' }}" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" onerror="this.src='https://placehold.co/400x300/e2e8f0/64748b?text=Sem+Foto'">
+                        <div class="absolute top-3 right-3 {% if ad.status == 'perdido' %}bg-status-lost{% else %}bg-status-found{% endif %} text-white text-xs font-bold px-3 py-1 rounded-full shadow">
+                            {% if ad.status == 'perdido' %}Perdido{% else %}Status: Visto{% endif %}
+                        </div>
+                    </div>
+                    <div class="p-4 flex-grow flex flex-col">
+                        <h4 class="font-bold text-gray-800 text-lg mb-2 line-clamp-1">Nome: <span class="font-normal text-gray-600">{{ ad.animalName|default:'Não identificado' }}</span></h4>
+                        <div class="text-sm text-gray-600 space-y-1 mb-4 flex-grow">
+                            <p><i class="fas fa-map-marker-alt w-5 text-center text-gray-400"></i> <strong class="text-gray-700">{% if ad.status == 'perdido' %}Perdido{% else %}Encontrado{% endif %} em:</strong> <span class="line-clamp-1 inline">{{ ad.location }}</span></p>
+                            <p><i class="fas fa-calendar-alt w-5 text-center text-gray-400"></i> <strong class="text-gray-700">Data:</strong> {{ ad.date }}</p>
+                        </div>
+                        <div class="flex gap-2 mt-auto">
+                            <!-- Botão do WhatsApp -->
+                            <button type="button" 
+                                    onclick="openWhatsApp('{{ ad.phone }}', '{{ ad.animalName|default:'Animal'|escapejs }}', '{{ ad.status|escapejs }}')" 
+                                    class="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm font-bold py-2.5 px-3 rounded-lg shadow transition flex items-center justify-center gap-2 text-center">
+                                <i class="fab fa-whatsapp text-lg"></i> Falar no WhatsApp
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            {% empty %}
+                <p id="empty-message" class="col-span-full text-center text-gray-500 py-10">Nenhum animal cadastrado ainda.</p>
+            {% endfor %}
+            <p id="no-filter-results" class="col-span-full text-center text-gray-500 py-10 hidden">Nenhum registo encontrado para este filtro.</p>
+        </div>
+    </main>
+
+    <!-- Modal Formulário -->
+    <div id="post-modal" class="fixed inset-0 bg-black bg-opacity-60 hidden z-50 flex justify-center items-center backdrop-blur-sm p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+            <!-- Modal Header -->
+            <div class="bg-brand-hero text-gray-800 px-6 py-4 flex justify-between items-center border-b border-gray-300">
+                <h3 class="text-xl font-bold"><i class="fas fa-bullhorn mr-2"></i> Cadastrar Cartaz</h3>
+                <button type="button" onclick="closeModal()" class="text-gray-600 hover:text-red-600 text-2xl font-bold leading-none">&times;</button>
+            </div>
+
+            <!-- Modal Body (Form) -->
+            <div class="p-6 overflow-y-auto">
+                <form id="form-cartaz" action="{% url 'create_ad' %}" method="post" enctype="multipart/form-data" class="space-y-4">
+                    {% csrf_token %}
+
+                    <!-- Status Selection -->
+                    <div class="flex gap-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                        <label class="flex-1 flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-white transition">
+                            <input type="radio" name="status" value="perdido" required class="w-4 h-4 text-brand-orange focus:ring-brand-orange">
+                            <span class="font-bold text-status-lost">Animal Perdido</span>
+                        </label>
+                        <label class="flex-1 flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-white transition">
+                            <input type="radio" name="status" value="visto" required class="w-4 h-4 text-status-found focus:ring-status-found">
+                            <span class="font-bold text-status-found">Animal Visto/Encontrado</span>
+                        </label>
+                    </div>
+
+                    <!-- Nome do Animal -->
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-1">Nome do Animal <span class="text-xs text-gray-500 font-normal">(se souber)</span></label>
+                        <input type="text" id="animalName" name="animal_name" maxlength="120" placeholder="Ex: Rex, Luna..." class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-brand-hero focus:border-transparent">
+                    </div>
+
+                    <!-- Localização -->
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-1">Onde foi visto/perdido? *</label>
+                        <div class="relative flex gap-2">
+                            <div class="relative flex-grow">
+                                <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400"><i class="fas fa-map-marker-alt"></i></span>
+                                <input type="text" id="location" name="location" maxlength="200" required placeholder="Digite o endereço e clique em Buscar" class="w-full border border-gray-300 rounded-lg py-2.5 pl-10 pr-3 focus:ring-2 focus:ring-brand-hero focus:border-transparent">
+                            </div>
+                            <button type="button" id="btn-buscar-cep" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 rounded-lg font-semibold transition">Buscar</button>
+                        </div>
+                        
+                        <!-- Contêiner do Mapa -->
+                        <div id="map" class="w-full mt-3 rounded-lg border border-gray-300 z-0 relative" style="height: 250px;"></div>
+                        
+                        <!-- Coordenadas ocultas -->
+                        <input type="hidden" id="lat" name="latitude">
+                        <input type="hidden" id="lng" name="longitude">
+                        
+                        <p class="text-xs text-gray-500 mt-1">
+                            Digite o local e clique em Buscar, ou clique diretamente no mapa para marcar o ponto exato.
+                        </p>
+                    </div>
+
+                    <!-- Imagem -->
+                    <div>
+                        <label for="image" class="block text-sm font-semibold text-gray-700 mb-1">Foto do Animal *</label>
+                        <input type="file" id="image" name="image" accept="image/*" required class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-brand-hero focus:border-transparent">
+                    </div>
+
+                    <!-- Contatos -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Seu Nome *</label>
+                            <div class="relative">
+                                <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400"><i class="fas fa-user"></i></span>
+                                <input type="text" id="responsibleName" name="responsible_name" maxlength="120" required placeholder="Seu nome" class="w-full border border-gray-300 rounded-lg py-2.5 pl-10 pr-3 focus:ring-2 focus:ring-brand-hero focus:border-transparent">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Seu Telefone / WhatsApp *</label>
+                            <div class="relative">
+                                <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400"><i class="fas fa-phone"></i></span>
+                                <input type="tel" id="phone" name="phone" maxlength="30" required placeholder="(00) 00000-0000" class="w-full border border-gray-300 rounded-lg py-2.5 pl-10 pr-3 focus:ring-2 focus:ring-brand-hero focus:border-transparent">
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="bg-gray-50 px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+                <button type="button" onclick="closeModal()" class="px-4 py-2 text-gray-600 font-semibold hover:bg-gray-200 rounded-lg transition">Cancelar</button>
+                <button type="submit" form="form-cartaz" class="px-6 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white font-bold rounded-lg shadow transition">
+                    Publicar Cartaz
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="bg-brand-nav py-6 text-center text-sm text-gray-700 border-t border-gray-200 mt-auto relative z-10">
+        <p>&copy; 2026 PI Animal - Todos os direitos reservados.</p>
+    </footer>
+
+    <!-- JS do Leaflet e script customizado com controle de cache -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="{% static 'js/script.js' %}?v=20261104-7"></script>
+
+</body>
+</html>

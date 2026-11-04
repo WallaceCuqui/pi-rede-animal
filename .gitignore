@@ -1,0 +1,8 @@
+venv/
+*.pyc
+__pycache__/
+db.sqlite3
+media/
+.vscode/
+erros.log
+.DS_Store
