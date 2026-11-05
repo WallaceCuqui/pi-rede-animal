@@ -1,7 +1,7 @@
 from django.contrib import messages
 from django.conf import settings
 from django.http import HttpResponseNotAllowed
-from django.shortcuts import redirect, render
+from django.shortcuts import redirect, render, get_object_or_404, redirect
 
 from .forms import AdForm
 from .models import Ad
@@ -48,6 +48,13 @@ def create_ad(request):
         )
         messages.error(request, f'Não foi possível publicar o anúncio. {errors}')
 
+    return redirect('index')
+
+def delete_ad(request, pk):
+    if request.method == 'POST':
+        ad = get_object_or_404(Ad, pk=pk)
+        ad.delete()
+        messages.success(request, 'Cartaz removido com sucesso!')
     return redirect('index')
 
 def clear_db(request):
